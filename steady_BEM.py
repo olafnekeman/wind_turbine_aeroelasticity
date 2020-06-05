@@ -160,8 +160,10 @@ class steady_BEM:
         self.polar_alpha = data1['alfa'][:]
         self.polar_cl = data1['cl'][:]
         self.polar_cd = data1['cd'][:]
-            
-    def get_solution(self,pitch):
+        self.pitch_ct = self.find_pitch_ct()
+        
+           
+    def get_solution(self, pitch):
         self.twist_cent = self.twist_no_pitch+pitch
         results =np.zeros([self.N_blade_sec,6])
         
@@ -176,6 +178,18 @@ class steady_BEM:
         CP = np.sum(dr*results[:,4]*results[:,2]*self.NBlades*self.Radius*self.Omega/(0.5*self.Uinf**3*np.pi*self.Radius**2))
         return CT, CP, results
     
+    def find_pitch_ct(self, resolution=0.1):
+        pitch_range = np.arange(-5, 15, resolution)
+        pitch_ct = np.zeros([len(pitch_range),3])
+        for j, pitch in enumerate(pitch_range):
+            CT, CP, results = self.get_solution(pitch)
+            pitch_ct[j,:] = (pitch, CT, CP)
+            if j%20==0:
+                print('we are at {} iterations'.format(j))
+        return pitch_ct
+    
+    def find_pitch(self, CT):
+        return round(np.interp(CT, self.pitch_ct[:,1], self.pitch_ct[:,0]), 3)
     
 if __name__ == "__main__":
     # define flow conditions
