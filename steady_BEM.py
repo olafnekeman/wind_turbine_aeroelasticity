@@ -109,12 +109,13 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
         Prandtl, Prandtltip, Prandtlroot = PrandtlTipRootCorrection(r_R, rootradius_R, tipradius_R, Omega*Radius/Uinf, NBlades, anew);
         if (Prandtl < 0.0001): 
             Prandtl = 0.0001 # avoid divide by zero
-        anew = anew/Prandtl # correct estimate of axial induction
-        a = 0.85*a+0.15*anew # for improving convergence, weigh current and previous iteration of axial induction
+#        anew = anew/Prandtl # correct estimate of axial induction
+        a = 0.95*a+0.05*anew # for improving convergence, weigh current and previous iteration of axial induction
 
         # calculate aximuthal induction
-        aline = ftan*NBlades/(2*np.pi*Uinf*(1-a)*Omega*2*(r_R*Radius)**2)
-        aline =aline/Prandtl # correct estimate of azimuthal induction with Prandtl's correction
+        aline_new = ftan*NBlades/(2*np.pi*Uinf*(1-a)*Omega*2*(r_R*Radius)**2)
+#        aline_new =aline_new/Prandtl # correct estimate of azimuthal induction with Prandtl's correction
+        aline = 0.85*aline+0.15*aline_new
         # ///////////////////////////////////////////////////////////////////////////
         # // end of the block "Calculate new estimate of axial and azimuthal induction"
         # ///////////////////////////////////////////////////////////////////////
@@ -126,7 +127,7 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
             break
     if i == Niterations-1:
         print('WARNING: BEM model did not converge within {} iterations, consider increasing iteration amount.'.format(Niterations))
-    return [a , aline, r_R, fnorm , ftan, gamma]
+    return [a , aline, r_R, fnorm , ftan, gamma, CT]
 
 
 class steady_BEM:
@@ -161,11 +162,10 @@ class steady_BEM:
         self.polar_cl = data1['cl'][:]
         self.polar_cd = data1['cd'][:]
         self.pitch_ct = self.find_pitch_ct()
-        
-           
+                
     def get_solution(self, pitch):
         self.twist_cent = self.twist_no_pitch+pitch
-        results =np.zeros([self.N_blade_sec,6])
+        results =np.zeros([self.N_blade_sec,7])
         
         for i in range(self.N_blade_sec):
             results[i,:] = solveStreamtube(self.Uinf, self.r_R_dist[i], self.r_R_dist[i+1], 
@@ -178,7 +178,7 @@ class steady_BEM:
         CP = np.sum(dr*results[:,4]*results[:,2]*self.NBlades*self.Radius*self.Omega/(0.5*self.Uinf**3*np.pi*self.Radius**2))
         return CT, CP, results
     
-    def find_pitch_ct(self, resolution=0.1):
+    def find_pitch_ct(self, resolution=1):
         pitch_range = np.arange(-5, 15, resolution)
         pitch_ct = np.zeros([len(pitch_range),3])
         for j, pitch in enumerate(pitch_range):
@@ -189,7 +189,7 @@ class steady_BEM:
         return pitch_ct
     
     def find_pitch(self, CT):
-        return round(np.interp(CT, self.pitch_ct[:,1], self.pitch_ct[:,0]), 3)
+        return np.round(np.interp(CT, self.pitch_ct[:,1], self.pitch_ct[:,0]), 3)
     
 if __name__ == "__main__":
     # define flow conditions
