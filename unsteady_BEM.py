@@ -97,9 +97,10 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
     # initiatlize variables
     a = initial_cond[0] # axial induction
     aline = initial_cond[1] # tangential induction factor
+    Prandtl = 1
     
     Niterations = 100
-    Erroriterations =0.00000001 # error limit for iteration rpocess, in absolute value of induction
+    Erroriterations =0.0000001 # error limit for iteration rpocess, in absolute value of induction
     
     a_time = np.zeros(len(time_array))
     ap_time = np.zeros(len(time_array))
@@ -143,7 +144,7 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
             # calculate new axial induction, accounting for Glauert's correction
             #anew =  ainduction(CT)
 
-            vind,dvind_dt = pitt_peters(np.array([-CT]),np.array([-a_time[j-1]*Uinf]),Uinf,r_R*Radius,dt)
+            vind,dvind_dt = pitt_peters(np.array([-CT]),np.array([-a_time[j-1]*Uinf]),Uinf,Radius,dt)
             
             anew = -vind[0]/Uinf
 #            if j == 5:
@@ -153,8 +154,8 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
             if (Prandtl < 0.0001): 
                 Prandtl = 0.0001 # avoid divide by zero
 #            anew = anew/Prandtl # correct estimate of axial induction
-            a = 0.75*a+0.25*anew # for improving convergence, weigh current and previous iteration of axial induction
-
+            a = 0.0*a+1.0*anew # for improving convergence, weigh current and previous iteration of axial induction
+            
             # calculate aximuthal induction
             aline_new = ftan*NBlades/(2*np.pi*Uinf*(1-a)*Omega*2*(r_R*Radius)**2)
 #            aline_new =aline_new/Prandtl # correct estimate of azimuthal induction with Prandtl's correction
@@ -169,6 +170,9 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
                 # print("iterations")
                 # print(i)
                 break
+
+        if i == Niterations-1:
+            print('Not converged')
         
         a_time[j] = a
         ap_time[j] = aline
@@ -254,7 +258,7 @@ if __name__ == "__main__":
     B = unsteady_BEM(airfoil, TipLocation_R, RootLocation_R, NBlades, Radius, Uinf, TSR, N_blade_sec,spacing='cosine')
     
     dt = 0.01
-    time_range = np.arange(0,5,dt)
+    time_range = np.arange(0,25,dt)
     CT_time = 0.5*np.ones(len(time_range))
     CT_time[time_range>1] = 0.9
    
