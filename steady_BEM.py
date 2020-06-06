@@ -184,8 +184,8 @@ class steady_BEM:
         for j, pitch in enumerate(pitch_range):
             CT, CP, results = self.get_solution(pitch)
             pitch_ct[j,:] = (pitch, CT, CP)
-            if j%20==0:
-                print('we are at {} iterations'.format(j))
+#             if j%20==0:
+#                 print('we are at {} iterations'.format(j))
         return pitch_ct
     
     def find_pitch(self, CT):
