@@ -109,12 +109,12 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
         Prandtl, Prandtltip, Prandtlroot = PrandtlTipRootCorrection(r_R, rootradius_R, tipradius_R, Omega*Radius/Uinf, NBlades, anew);
         if (Prandtl < 0.0001): 
             Prandtl = 0.0001 # avoid divide by zero
-#        anew = anew/Prandtl # correct estimate of axial induction
+        anew = anew/Prandtl # correct estimate of axial induction
         a = 0.95*a+0.05*anew # for improving convergence, weigh current and previous iteration of axial induction
 
         # calculate aximuthal induction
         aline_new = ftan*NBlades/(2*np.pi*Uinf*(1-a)*Omega*2*(r_R*Radius)**2)
-#        aline_new =aline_new/Prandtl # correct estimate of azimuthal induction with Prandtl's correction
+        aline_new =aline_new/Prandtl # correct estimate of azimuthal induction with Prandtl's correction
         aline = 0.85*aline+0.15*aline_new
         # ///////////////////////////////////////////////////////////////////////////
         # // end of the block "Calculate new estimate of axial and azimuthal induction"
@@ -125,9 +125,10 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
             # print("iterations")
             # print(i)
             break
+
     if i == Niterations-1:
         print('WARNING: BEM model did not converge within {} iterations, consider increasing iteration amount.'.format(Niterations))
-    return [a , aline, r_R, fnorm , ftan, gamma, CT]
+    return [a , aline, r_R, fnorm , ftan, gamma, CT, Prandtl]
 
 
 class steady_BEM:
@@ -165,7 +166,7 @@ class steady_BEM:
                 
     def get_solution(self, pitch):
         self.twist_cent = self.twist_no_pitch+pitch
-        results =np.zeros([self.N_blade_sec,7])
+        results =np.zeros([self.N_blade_sec,8])
         
         for i in range(self.N_blade_sec):
             results[i,:] = solveStreamtube(self.Uinf, self.r_R_dist[i], self.r_R_dist[i+1], 
@@ -184,8 +185,8 @@ class steady_BEM:
         for j, pitch in enumerate(pitch_range):
             CT, CP, results = self.get_solution(pitch)
             pitch_ct[j,:] = (pitch, CT, CP)
-#             if j%20==0:
-#                 print('we are at {} iterations'.format(j))
+            if j%20==0:
+                print('we are at {} iterations'.format(j))
         return pitch_ct
     
     def find_pitch(self, CT):
@@ -201,7 +202,7 @@ if __name__ == "__main__":
     
     TipLocation_R =  1
     RootLocation_R =  0.2
-    pitch = 2
+    pitch = -1.208
     
     airfoil = 'DU_polar.txt'
     
