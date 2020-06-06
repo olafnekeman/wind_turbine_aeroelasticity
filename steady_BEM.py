@@ -109,12 +109,13 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
         Prandtl, Prandtltip, Prandtlroot = PrandtlTipRootCorrection(r_R, rootradius_R, tipradius_R, Omega*Radius/Uinf, NBlades, anew);
         if (Prandtl < 0.0001): 
             Prandtl = 0.0001 # avoid divide by zero
-        anew = anew/Prandtl # correct estimate of axial induction
-        a = 0.85*a+0.15*anew # for improving convergence, weigh current and previous iteration of axial induction
+#        anew = anew/Prandtl # correct estimate of axial induction
+        a = 0.95*a+0.05*anew # for improving convergence, weigh current and previous iteration of axial induction
 
         # calculate aximuthal induction
-        aline = ftan*NBlades/(2*np.pi*Uinf*(1-a)*Omega*2*(r_R*Radius)**2)
-        aline =aline/Prandtl # correct estimate of azimuthal induction with Prandtl's correction
+        aline_new = ftan*NBlades/(2*np.pi*Uinf*(1-a)*Omega*2*(r_R*Radius)**2)
+#        aline_new =aline_new/Prandtl # correct estimate of azimuthal induction with Prandtl's correction
+        aline = 0.85*aline+0.15*aline_new
         # ///////////////////////////////////////////////////////////////////////////
         # // end of the block "Calculate new estimate of axial and azimuthal induction"
         # ///////////////////////////////////////////////////////////////////////
