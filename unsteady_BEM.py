@@ -18,12 +18,69 @@ def pitt_peters(Ct,vind,Uinf,R,dt,glauert=True ):
     # glauert defines if glauert's high load correction is applied
     a=-vind/Uinf # determine the induction coefficient for the time step {i-1}
     Ctn= -CTfunction(a, glauert) # calculate the thrust coefficient from the induction for the time step {i-1}
-
     dvind_dt =  (Ct-Ctn)/(16/(3*np.pi))*(Uinf**2/R) # calculate the time derivative of the induction velocity
     vindnew = vind + dvind_dt*dt # calculate the induction at time {i} by time integration
     return vindnew, dvind_dt
 
-def CTfunction(a, glauert = False):
+def oye_dynamic_inflow(vz, Ct1, Ct2, vint, Uinf, R, r,dt,glauert=True):
+    # this function determines the time derivative of the induction at the annulli
+    # using the Øye dynamic inflow model
+    # Ct is the thrust coefficient on the actuator, vind is the induced velocity, 
+    # Uinf is the unperturbed velocity and R is the radial scale of the flow,
+    # r is the radial position of the annulus. vqs is the quasi-steady value from BEM, 
+    #vint is an intermediate value and vz is the induced velocity
+    
+    # calculate  quasi-steady induction velocity
+    vqst1=-ainduction(-Ct1)*Uinf
+
+    # calculate current induction factor
+    a=-vz/Uinf
+
+    # calculate time scales of the model
+    t1 = 1.1/(1-1.3*a)*R/Uinf
+    t2 = (0.39-0.26*(r/R)**2)*t1
+
+    # calculate next-time-step quasi-steady induction velocity
+    vqst2=-ainduction(-Ct2)*Uinf
+        
+    #calculate time derivative of intermediate velocity
+    dvint_dt= (vqst1+ (vqst2-vqst1)/dt*0.6*t1 - vint)/t1
+
+    # calculate new intermediate velocity
+    vint2 = vint +dvint_dt*dt
+    
+    #calculate time derivaive of the induced velocity
+    dvz_dt = ((vint+vint2)/2-vz)/t2
+    
+    #calculate new induced velocity
+    vz2 = vz +dvz_dt*dt
+    
+    return vz2, vint2
+
+def larsenmadsen(vz, Ct2, Uinf, R,dt,glauert=True):
+    # this function determines the time derivative of the induction at the annulli
+    # using the Larsen-Madsen dynamic inflow model
+    # Ct2 is the thrust coefficient on the actuator at the next time step, 
+    # vind is the induced velocity, 
+    # Uinf is the unperturbed velocity and R is the radial scale of the flow,
+    # R is the radius. vqst2 is the quasi-steady value from momentum theory, 
+    
+    # calculate velocity wake 
+    Vwake=Uinf+vz
+
+    # calculate time scales of the model
+    t1 = 0.5*R/Vwake
+
+    # calculate next-time-step quasi-steady induction velocity
+    vqst2=-ainduction(-Ct2)*Uinf
+    
+    #calculate new induced velocity
+    vz2 = vz*np.exp(-dt/t1)+vqst2*(1-np.exp(-dt/t1))
+    
+    return vz2
+
+
+def CTfunction(a, glauert = True):
     """
     This function calculates the thrust coefficient as a function of induction factor 'a'
     'glauert' defines if the Glauert correction for heavily loaded rotors should be used; default value is false
@@ -79,7 +136,7 @@ def loadBladeElement(vnorm, vtan, r_R, chord, twist, polar_alpha, polar_cl, pola
     gamma = 0.5*np.sqrt(vmag2)*cl*chord
     return fnorm , ftan, gamma
 
-def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius, NBlades, chord, twist_no_pitch, polar_alpha, polar_cl, polar_cd, time_array, pitch_array, initial_cond ):
+def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius, NBlades, chord, twist_no_pitch, polar_alpha, polar_cl, polar_cd, time_array, pitch_array, initial_cond, model='pitt_peters' ):
     """
     solve balance of momentum between blade element load and loading in the streamtube
     input variables:
@@ -90,17 +147,15 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
     Omega -rotational velocity
     NBlades - number of blades in rotor
     
-    initial_cond = np.array([a_init, ap_init, fnorm_init, ftan_init, gamma_init Ct_init])
+    initial_cond = np.array([a_init, ap_init, fnorm_init, ftan_init, gamma_init, Ct_init, Prandtl_init])
     """
     Area = np.pi*((r2_R*Radius)**2-(r1_R*Radius)**2) #  area streamtube
     r_R = (r1_R+r2_R)/2 # centroide
     # initiatlize variables
     a = initial_cond[0] # axial induction
     aline = initial_cond[1] # tangential induction factor
-    Prandtl = 1
     
     Niterations = 100
-    Erroriterations =0.0000001 # error limit for iteration rpocess, in absolute value of induction
     
     a_time = np.zeros(len(time_array))
     ap_time = np.zeros(len(time_array))
@@ -115,8 +170,14 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
     ftan_time[0] = initial_cond[3]
     gamma_time[0] = initial_cond[4]    
     Ct_time[0] = initial_cond[5]
+    Prandtl = initial_cond[6]
     dt = time_array[1]-time_array[0]
-
+    
+    Erroriterations =0.000001*dt #relative change in induction factor
+    
+    if model == 'oye':
+        vint = -a_time[0]*Uinf*Prandtl
+    
     for j in range(1,len(time_array)):
         twist = twist_no_pitch+pitch_array[j]
 
@@ -143,22 +204,29 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
 
             # calculate new axial induction, accounting for Glauert's correction
             #anew =  ainduction(CT)
-
-            vind,dvind_dt = pitt_peters(np.array([-CT]),np.array([-a_time[j-1]*Uinf]),Uinf,Radius,dt)
-            
+            if model == 'pitt_peters':
+                vind,dvind_dt = pitt_peters(np.array([-CT]),np.array([-a_time[j-1]*Uinf*Prandtl]),Uinf,Radius,dt)
+            elif model == 'oye':
+                vind,vint_new=oye_dynamic_inflow(np.array([-a_time[j-1]*Uinf*Prandtl]), np.array([-Ct_time[j-1]]), np.array([-CT]), vint, Uinf, Radius, r_R*Radius,dt) 
+            elif model == 'larsen_madsen':
+                vind = larsenmadsen(np.array([-a_time[j-1]*Uinf*Prandtl]), np.array([-CT]), Uinf, Radius,dt)
+            else:
+                raise ValueError('Model not recognized')
+                
             anew = -vind[0]/Uinf
-#            if j == 5:
-#                print(i,a,vind)
+            
+
             # correct new axial induction with Prandtl's correction
             Prandtl, Prandtltip, Prandtlroot = PrandtlTipRootCorrection(r_R, rootradius_R, tipradius_R, Omega*Radius/Uinf, NBlades, anew);
-            if (Prandtl < 0.0001): 
+            if (Prandtl < 0.0001):  
                 Prandtl = 0.0001 # avoid divide by zero
-#            anew = anew/Prandtl # correct estimate of axial induction
+                            
+            anew = anew/Prandtl # correct estimate of axial induction
             a = 0.0*a+1.0*anew # for improving convergence, weigh current and previous iteration of axial induction
             
             # calculate aximuthal induction
             aline_new = ftan*NBlades/(2*np.pi*Uinf*(1-a)*Omega*2*(r_R*Radius)**2)
-#            aline_new =aline_new/Prandtl # correct estimate of azimuthal induction with Prandtl's correction
+            aline_new =aline_new/Prandtl # correct estimate of azimuthal induction with Prandtl's correction
             aline = aline_new
 #            aline = aline*0.95+aline_new*0.05
             # ///////////////////////////////////////////////////////////////////////////
@@ -170,6 +238,8 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
                 # print("iterations")
                 # print(i)
                 break
+        if model == 'oye':
+            vint = vint_new*1
 
         if i == Niterations-1:
             print('Not converged')
@@ -180,6 +250,7 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
         ftan_time[j] = ftan
         gamma_time[j] = gamma
         Ct_time[j] = CT
+        
         
     return a_time,ap_time,fnorm_time,ftan_time,gamma_time,Ct_time
 
@@ -232,12 +303,13 @@ class unsteady_BEM:
         Ct_time_res = np.zeros([self.N_blade_sec,len(time_vec)])
         
         for i in [0]:#range(self.N_blade_sec):
-            initial_cond = np.array([start_results[i,0], start_results[i,1], start_results[i,2], start_results[i,3], start_results[i,4], start_results[i,5]])
+            initial_cond = np.array([start_results[i,0], start_results[i,1], start_results[i,2], start_results[i,3], start_results[i,4], start_results[i,6], start_results[i,7]])
             print(initial_cond)
             a_time_res[i,:],ap_time_res[i,:],fnorm_time_res[i,:],ftan_time_res[i,:],gamma_time_res[i,:],Ct_time_res[i,:] = solveStreamtube(self.Uinf, 
                        self.r_R_dist[i], self.r_R_dist[i+1], self.RootLocation_R, self.TipLocation_R , 
                        self.Omega, self.Radius, self.NBlades, self.chord_cent[i], self.twist_no_pitch[i], 
-                       self.polar_alpha, self.polar_cl, self.polar_cd, time_vec, self.pitch_time, initial_cond )
+                       self.polar_alpha, self.polar_cl, self.polar_cd, time_vec, self.pitch_time,
+                       initial_cond, model=inflow_model )
              
         return a_time_res,ap_time_res,fnorm_time_res,ftan_time_res,gamma_time_res,Ct_time_res
              
@@ -257,13 +329,14 @@ if __name__ == "__main__":
     
     B = unsteady_BEM(airfoil, TipLocation_R, RootLocation_R, NBlades, Radius, Uinf, TSR, N_blade_sec,spacing='cosine')
     
-    dt = 0.01
+    dt = 0.001
     time_range = np.arange(0,25,dt)
     CT_time = 0.5*np.ones(len(time_range))
     CT_time[time_range>1] = 0.9
    
+    inflow_model = 'larsen_madsen'
     
-    a_time_res,ap_time_res,fnorm_time_res,ftan_time_res,gamma_time_res,Ct_time_res=B.get_solution(time_range,CT_time)
+    a_time_res,ap_time_res,fnorm_time_res,ftan_time_res,gamma_time_res,Ct_time_res=B.get_solution(time_range,CT_time,inflow_model = inflow_model)
         
         
     _,_,steady_sol1 = B.B_steady.get_solution(B.pitch_time[0])
