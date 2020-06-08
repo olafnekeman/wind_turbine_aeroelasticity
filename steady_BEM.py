@@ -179,7 +179,7 @@ class steady_BEM:
         CP = np.sum(dr*results[:,4]*results[:,2]*self.NBlades*self.Radius*self.Omega/(0.5*self.Uinf**3*np.pi*self.Radius**2))
         return CT, CP, results
     
-    def find_pitch_ct(self, resolution=1):
+    def find_pitch_ct(self, resolution=0.1):
         pitch_range = np.arange(-5, 15, resolution)
         pitch_ct = np.zeros([len(pitch_range),3])
         for j, pitch in enumerate(pitch_range):
