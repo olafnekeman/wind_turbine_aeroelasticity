@@ -215,7 +215,6 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
                 
             anew = -vind[0]/Uinf
             
-
             # correct new axial induction with Prandtl's correction
             Prandtl, Prandtltip, Prandtlroot = PrandtlTipRootCorrection(r_R, rootradius_R, tipradius_R, Omega*Radius/Uinf, NBlades, anew);
             if (Prandtl < 0.0001):  
@@ -302,9 +301,8 @@ class unsteady_BEM:
         gamma_time_res = np.zeros([self.N_blade_sec,len(time_vec)])
         Ct_time_res = np.zeros([self.N_blade_sec,len(time_vec)])
         
-        for i in [0]:#range(self.N_blade_sec):
+        for i in range(self.N_blade_sec):
             initial_cond = np.array([start_results[i,0], start_results[i,1], start_results[i,2], start_results[i,3], start_results[i,4], start_results[i,6], start_results[i,7]])
-            print(initial_cond)
             a_time_res[i,:],ap_time_res[i,:],fnorm_time_res[i,:],ftan_time_res[i,:],gamma_time_res[i,:],Ct_time_res[i,:] = solveStreamtube(self.Uinf, 
                        self.r_R_dist[i], self.r_R_dist[i+1], self.RootLocation_R, self.TipLocation_R , 
                        self.Omega, self.Radius, self.NBlades, self.chord_cent[i], self.twist_no_pitch[i], 
