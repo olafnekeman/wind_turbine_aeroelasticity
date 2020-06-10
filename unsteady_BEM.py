@@ -151,12 +151,14 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
     """
     Area = np.pi*((r2_R*Radius)**2-(r1_R*Radius)**2) #  area streamtube
     r_R = (r1_R+r2_R)/2 # centroide
-    # initiatlize variables
+    # initiatlize variables as the initial conditions
     a = initial_cond[0] # axial induction
     aline = initial_cond[1] # tangential induction factor
     
+    #define the maximum number of iterations per time step
     Niterations = 100
     
+    #define some empty arrays which house the results in time
     a_time = np.zeros(len(time_array))
     ap_time = np.zeros(len(time_array))
     fnorm_time = np.zeros(len(time_array))
@@ -164,6 +166,7 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
     gamma_time = np.zeros(len(time_array))
     Ct_time = np.zeros(len(time_array))
     
+    #add the initial conditions to these arrays
     a_time[0] = initial_cond[0]
     ap_time[0] = initial_cond[1]
     fnorm_time[0] = initial_cond[2]
@@ -171,14 +174,20 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
     gamma_time[0] = initial_cond[4]    
     Ct_time[0] = initial_cond[5]
     Prandtl = initial_cond[6]
+    
+    #find the value for dt
     dt = time_array[1]-time_array[0]
     
     Erroriterations =0.000001*dt #relative change in induction factor
     
+    #if the model is oye, a intermediate velocity is required, multiply with the value
+    #of the Prandtl tip corrections to make sure the correct induced velocity is calculated
     if model == 'oye':
         vint = -a_time[0]*Uinf*Prandtl
     
+    #run through the time vector
     for j in range(1,len(time_array)):
+        #add the pitch of the current timestep to the twist
         twist = twist_no_pitch+pitch_array[j]
 
         for i in range(Niterations):
@@ -204,6 +213,9 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
 
             # calculate new axial induction, accounting for Glauert's correction
             #anew =  ainduction(CT)
+            #note that the vind is multiplied with the Prandtl tip correction to make sure the correct
+            #value for vind by the force produced by the blade section is calculated, this will later 
+            #be corrected again with the Prandtl tip correction.
             if model == 'pitt_peters':
                 vind,dvind_dt = pitt_peters(np.array([-CT]),np.array([-a_time[j-1]*Uinf*Prandtl]),Uinf,Radius,dt)
             elif model == 'oye':
@@ -212,7 +224,8 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
                 vind = larsenmadsen(np.array([-a_time[j-1]*Uinf*Prandtl]), np.array([-CT]), Uinf, Radius,dt)
             else:
                 raise ValueError('Model not recognized')
-                
+            
+            #find the new axial induction factor 
             anew = -vind[0]/Uinf
             
             # correct new axial induction with Prandtl's correction
@@ -221,8 +234,9 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
                 Prandtl = 0.0001 # avoid divide by zero
                             
             anew = anew/Prandtl # correct estimate of axial induction
-            a = 0.0*a+1.0*anew # for improving convergence, weigh current and previous iteration of axial induction
-            
+            a = 0.0*a+1.0*anew # since the initial guess of this timestep will be the value for induction of 
+                               # the previous timestep, the weigthing is not done to speed up the code
+                            
             # calculate aximuthal induction
             aline_new = ftan*NBlades/(2*np.pi*Uinf*(1-a)*Omega*2*(r_R*Radius)**2)
             aline_new =aline_new/Prandtl # correct estimate of azimuthal induction with Prandtl's correction
@@ -237,20 +251,21 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
                 # print("iterations")
                 # print(i)
                 break
+        #if the model is oye, define the new intermediate velocity from this timestep after converged
         if model == 'oye':
             vint = vint_new*1
-
+        #notify the user if the timestep has not converged
         if i == Niterations-1:
             print('Not converged')
-        
+        #save the results from this timestep before moving on to the next
         a_time[j] = a
         ap_time[j] = aline
         fnorm_time[j] = fnorm
         ftan_time[j] = ftan
         gamma_time[j] = gamma
         Ct_time[j] = CT
-        
-        
+    
+    #return the results
     return a_time,ap_time,fnorm_time,ftan_time,gamma_time,Ct_time
 
 
@@ -274,26 +289,38 @@ class unsteady_BEM:
             raise ValueError('Spacing method not recognized, please select either "cosine" or "uniform"')
         
         self.r_R_cent = np.zeros(N_blade_sec)
+        #get the normalized radial locations of the blade sections
         for i in range(N_blade_sec):
             self.r_R_cent[i] = (self.r_R_dist[i]+self.r_R_dist[i+1])/2
-            
+        
+        #define the twist distribution without pitch as well as the chord distribution
         self.twist_no_pitch = -14*(1-self.r_R_cent)
         self.chord_cent = 3*(1-self.r_R_cent)+1
         
+        #read in the polar of the airfoil
         data1=pd.read_csv(airfoil, header=0,
                             names = ["alfa", "cl", "cd", "cm"],  sep='\s+')
         self.polar_alpha = data1['alfa'][:]
         self.polar_cl = data1['cl'][:]
         self.polar_cd = data1['cd'][:]
+        #initialize the steady BEM class
         self.B_steady = steady_BEM(airfoil, TipLocation_R, RootLocation_R, NBlades, Radius, Uinf, TSR, N_blade_sec, spacing=spacing)
-        
+    
+    #finction that calculates the solution give a time vector with the associated values for steady CT
+    #inflow models can be: pitt_peters,oye,larsen_madsen
     def get_solution(self, time_vec, CT_time, inflow_model = 'pitt_peters'):
         self.time_vec = time_vec
+        
+        #using the steady BEM class instance, find the value for the pitch in time to reach the 
+        #given steady CT
         self.pitch_time = self.B_steady.find_pitch(CT_time)  
         
         self.inflow_model = inflow_model
+        
+        #find the solution for the initial conditions with the steady solution
         start_CT,start_CP,start_results = self.B_steady.get_solution(self.pitch_time[0])
         
+        #define some empty arrays that will house the results
         a_time_res = np.zeros([self.N_blade_sec,len(time_vec)])
         ap_time_res = np.zeros([self.N_blade_sec,len(time_vec)])
         fnorm_time_res = np.zeros([self.N_blade_sec,len(time_vec)])
@@ -301,15 +328,34 @@ class unsteady_BEM:
         gamma_time_res = np.zeros([self.N_blade_sec,len(time_vec)])
         Ct_time_res = np.zeros([self.N_blade_sec,len(time_vec)])
         
+        #find the width of each blade section
+        dr = (self.r_R_dist[1:]-self.r_R_dist[:-1])*self.Radius
+        
+        #some empty arrays that house the absolute values for the thrust and the moment
+        T_res = np.zeros([self.N_blade_sec,len(time_vec)])
+        M_res = np.zeros([self.N_blade_sec,len(time_vec)])
+        
+        #run through each blade section and calculate the solution in time
         for i in range(self.N_blade_sec):
+            #find the initial conditions
             initial_cond = np.array([start_results[i,0], start_results[i,1], start_results[i,2], start_results[i,3], start_results[i,4], start_results[i,6], start_results[i,7]])
+            #call the function solveStreamtube with the given initial conditions and pitch in time
             a_time_res[i,:],ap_time_res[i,:],fnorm_time_res[i,:],ftan_time_res[i,:],gamma_time_res[i,:],Ct_time_res[i,:] = solveStreamtube(self.Uinf, 
                        self.r_R_dist[i], self.r_R_dist[i+1], self.RootLocation_R, self.TipLocation_R , 
                        self.Omega, self.Radius, self.NBlades, self.chord_cent[i], self.twist_no_pitch[i], 
                        self.polar_alpha, self.polar_cl, self.polar_cd, time_vec, self.pitch_time,
                        initial_cond, model=inflow_model )
-             
-        return a_time_res,ap_time_res,fnorm_time_res,ftan_time_res,gamma_time_res,Ct_time_res
+            #save the absolute value for thrust and moment for each blade section
+            T_res[i,:] = fnorm_time_res[i,:]*dr[i]
+            M_res[i,:] = ftan_time_res[i,:]*dr[i]*self.r_R_cent[i]*self.Radius
+        #sum all the values for thrust and moment along axis=0 to find the total thrust in time and normalize
+        CT_res = np.sum(T_res,axis=0)*self.NBlades/(0.5*self.Uinf**2*np.pi*self.Radius**2)
+        CP_res = np.sum(M_res,axis=0)*self.NBlades*self.Omega/(0.5*self.Uinf**3*np.pi*self.Radius**2)
+        #add the inital conditions to the CT and CP
+        CT_res[0] = start_CT
+        CP_res[0] = start_CP
+        #return the results
+        return a_time_res,ap_time_res,fnorm_time_res,ftan_time_res,gamma_time_res,Ct_time_res, CT_res, CP_res
              
 if __name__ == "__main__":
     # define flow conditions
