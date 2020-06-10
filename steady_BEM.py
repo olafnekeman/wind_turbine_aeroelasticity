@@ -5,7 +5,7 @@ Created on Fri Jun  5 10:41:27 2020
 import numpy as np
 import pandas as pd
 
-def CTfunction(a, glauert = False):
+def CTfunction(a, glauert = True):
     """
     This function calculates the thrust coefficient as a function of induction factor 'a'
     'glauert' defines if the Glauert correction for heavily loaded rotors should be used; default value is false
@@ -61,7 +61,7 @@ def loadBladeElement(vnorm, vtan, r_R, chord, twist, polar_alpha, polar_cl, pola
     gamma = 0.5*np.sqrt(vmag2)*cl*chord
     return fnorm , ftan, gamma
 
-def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius, NBlades, chord, twist, polar_alpha, polar_cl, polar_cd ):
+def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius, NBlades, chord, twist, polar_alpha, polar_cl, polar_cd, weight=0.05 ):
     """
     solve balance of momentum between blade element load and loading in the streamtube
     input variables:
@@ -110,7 +110,8 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
         if (Prandtl < 0.0001): 
             Prandtl = 0.0001 # avoid divide by zero
         anew = anew/Prandtl # correct estimate of axial induction
-        a = 0.95*a+0.05*anew # for improving convergence, weigh current and previous iteration of axial induction
+        prev_a = 1*a
+        a = (1-weight)*a+weight*anew # for improving convergence, weigh current and previous iteration of axial induction
 
         # calculate aximuthal induction
         aline_new = ftan*NBlades/(2*np.pi*Uinf*(1-a)*Omega*2*(r_R*Radius)**2)
@@ -121,7 +122,7 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
         # ///////////////////////////////////////////////////////////////////////
         
         #// test convergence of solution, by checking convergence of axial induction
-        if (np.abs(a-anew) < Erroriterations): 
+        if (np.abs(a-prev_a) < Erroriterations): 
             # print("iterations")
             # print(i)
             break
@@ -151,45 +152,56 @@ class steady_BEM:
             raise ValueError('Spacing method not recognized, please select either "cosine" or "uniform"')
         
         self.r_R_cent = np.zeros(N_blade_sec)
+        #get the normalized radial locations of the blade sections
         for i in range(N_blade_sec):
             self.r_R_cent[i] = (self.r_R_dist[i]+self.r_R_dist[i+1])/2
-            
+        #define the twist distribution without pitch as well as the chord distribution
         self.twist_no_pitch = -14*(1-self.r_R_cent)
         self.chord_cent = 3*(1-self.r_R_cent)+1
         
+        #read in the polar of the airfoil
         data1=pd.read_csv(airfoil, header=0,
                             names = ["alfa", "cl", "cd", "cm"],  sep='\s+')
         self.polar_alpha = data1['alfa'][:]
         self.polar_cl = data1['cl'][:]
         self.polar_cd = data1['cd'][:]
+        #initialize the CT as a function of the pitch
         self.pitch_ct = self.find_pitch_ct()
-                
-    def get_solution(self, pitch):
+    
+    #function to get the results of the steady BEM given a pitch angle            
+    def get_solution(self, pitch, weight=0.05):
+        #add the pitch to the twist
         self.twist_cent = self.twist_no_pitch+pitch
+        
+        #define an empty array with the results
         results =np.zeros([self.N_blade_sec,8])
         
+        #solve each Streamtube
         for i in range(self.N_blade_sec):
             results[i,:] = solveStreamtube(self.Uinf, self.r_R_dist[i], self.r_R_dist[i+1], 
                    self.RootLocation_R, self.TipLocation_R , self.Omega, self.Radius, self.NBlades, 
-                   self.chord_cent[i], self.twist_cent[i], self.polar_alpha, self.polar_cl, self.polar_cd )
-        
+                   self.chord_cent[i], self.twist_cent[i], self.polar_alpha, self.polar_cl, self.polar_cd, weight = weight)
+        #calculate the CT and CP
         areas = (self.r_R_dist[1:]**2-self.r_R_dist[:-1]**2)*np.pi*self.Radius**2
         dr = (self.r_R_dist[1:]-self.r_R_dist[:-1])*self.Radius
         CT = np.sum(dr*results[:,3]*self.NBlades/(0.5*self.Uinf**2*np.pi*self.Radius**2))
         CP = np.sum(dr*results[:,4]*results[:,2]*self.NBlades*self.Radius*self.Omega/(0.5*self.Uinf**3*np.pi*self.Radius**2))
         return CT, CP, results
     
-    def find_pitch_ct(self, resolution=0.1):
-        pitch_range = np.arange(-5, 15, resolution)
+    def find_pitch_ct(self, resolution=0.3):
+        #find the CT as a function of the pitch angle
+        pitch_range = np.arange(-13, 15, resolution)
         pitch_ct = np.zeros([len(pitch_range),3])
         for j, pitch in enumerate(pitch_range):
             CT, CP, results = self.get_solution(pitch)
             pitch_ct[j,:] = (pitch, CT, CP)
             if j%20==0:
+                #print the progress
                 print('we are at {} iterations'.format(j))
         return pitch_ct
     
     def find_pitch(self, CT):
+        #find the value of the pitch given the steady CT
         return np.round(np.interp(CT, self.pitch_ct[:,1], self.pitch_ct[:,0]), 3)
     
 if __name__ == "__main__":
