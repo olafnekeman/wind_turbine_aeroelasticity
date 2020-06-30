@@ -305,6 +305,13 @@ class unsteady_BEM:
         self.polar_cd = data1['cd'][:]
         #initialize the steady BEM class
         self.B_steady = steady_BEM(airfoil, TipLocation_R, RootLocation_R, NBlades, Radius, Uinf, TSR, N_blade_sec, spacing=spacing)
+        df_pitch_ct = pd.read_csv('pitch_ct.csv')
+        df_pitch_ct = df_pitch_ct[['ct', 'pitch']]
+        self.pitch_ct = df_pitch_ct.to_numpy()
+        
+    #find the value of the pitch given the steady CT
+    def find_pitch(self, CT):
+        return np.round(np.interp(CT, self.pitch_ct[:,1], self.pitch_ct[:,0]), 3)
     
     #finction that calculates the solution give a time vector with the associated values for steady CT
     #inflow models can be: pitt_peters,oye,larsen_madsen
