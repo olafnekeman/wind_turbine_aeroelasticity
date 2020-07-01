@@ -7,7 +7,7 @@ Created on Fri Jun  5 11:26:48 2020
 
 import numpy as np
 import pandas as pd
-from steady_BEM import steady_BEM
+from steady_BEM2 import steady_BEM
 import matplotlib.pyplot as plt
 from IPython.display import clear_output
 
@@ -316,7 +316,7 @@ class unsteady_BEM:
         
     def find_pitch(self, CT):
         #find the value of the pitch given the steady CT
-        return np.round(np.interp(CT, self.pitch_ct[:,1], self.pitch_ct[:,0]), 3)
+        return np.interp(CT, self.pitch_ct[:,1], self.pitch_ct[:,0])
     
     #finction that calculates the solution give a time vector with the associated values for steady CT
     #inflow models can be: pitt_peters,oye,larsen_madsen
