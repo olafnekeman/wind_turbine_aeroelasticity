@@ -59,7 +59,7 @@ def loadBladeElement(vnorm, vtan, r_R, chord, twist, polar_alpha, polar_cl, pola
     fnorm = lift*np.cos(inflowangle)+drag*np.sin(inflowangle)
     ftan = lift*np.sin(inflowangle)-drag*np.cos(inflowangle)
     gamma = 0.5*np.sqrt(vmag2)*cl*chord
-    return fnorm , ftan, gamma
+    return fnorm , ftan, gamma, alpha
 
 def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius, NBlades, chord, twist, polar_alpha, polar_cl, polar_cd, weight=0.05 ):
     """
@@ -88,7 +88,7 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
         Urotor = Uinf*(1-a) # axial velocity at rotor
         Utan = (1+aline)*Omega*r_R*Radius # tangential velocity at rotor
         # calculate loads in blade segment in 2D (N/m)
-        fnorm, ftan, gamma = loadBladeElement(Urotor, Utan, r_R,chord, twist, polar_alpha, polar_cl, polar_cd)
+        fnorm, ftan, gamma, alpha = loadBladeElement(Urotor, Utan, r_R,chord, twist, polar_alpha, polar_cl, polar_cd)
         load3Daxial =fnorm*Radius*(r2_R-r1_R)*NBlades # 3D force in axial direction
         # load3Dtan =loads[1]*Radius*(r2_R-r1_R)*NBlades # 3D force in azimuthal/tangential direction (not used here)
       
@@ -129,11 +129,12 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
 
     if i == Niterations-1:
         print('WARNING: BEM model did not converge within {} iterations, consider increasing iteration amount.'.format(Niterations))
-    return [a , aline, r_R, fnorm , ftan, gamma, CT, Prandtl]
+    return [a , aline, r_R, fnorm , ftan, gamma, CT, Prandtl, alpha]
 
 
 class steady_BEM:
-    def __init__(self, airfoil, TipLocation_R, RootLocation_R, NBlades, Radius, Uinf, TSR, N_blade_sec, spacing = 'cosine'):
+    def __init__(self, airfoil, TipLocation_R, RootLocation_R, NBlades, Radius, Uinf, TSR, 
+                 N_blade_sec, polar_alpha, polar_cl, polar_cd, spacing = 'cosine'):
         self.airfoil = airfoil
         self.NBlades = NBlades
         self.Radius = Radius
@@ -159,12 +160,10 @@ class steady_BEM:
         self.twist_no_pitch = -14*(1-self.r_R_cent)
         self.chord_cent = 3*(1-self.r_R_cent)+1
         
-        #read in the polar of the airfoil
-        data1=pd.read_csv(airfoil, header=0,
-                            names = ["alfa", "cl", "cd", "cm"],  sep='\s+')
-        self.polar_alpha = data1['alfa'][:]
-        self.polar_cl = data1['cl'][:]
-        self.polar_cd = data1['cd'][:]
+        # set the polars
+        self.polar_alpha = polar_alpha
+        self.polar_cl = polar_cl
+        self.polar_cd = polar_cd
         #initialize the CT as a function of the pitch
     
     #function to get the results of the steady BEM given a pitch angle            
@@ -174,7 +173,7 @@ class steady_BEM:
         self.Uinf = Uinf
         
         #define an empty array with the results
-        results =np.zeros([self.N_blade_sec,8])
+        results =np.zeros([self.N_blade_sec,9])
         
         #solve each Streamtube
         for i in range(self.N_blade_sec):
@@ -203,42 +202,33 @@ class steady_BEM:
     def find_pitch(self, CT):
         #find the value of the pitch given the steady CT
         return np.round(np.interp(CT, self.pitch_ct[:,1], self.pitch_ct[:,0]), 3)
+
     
-if __name__ == "__main__":
-    # define flow conditions
+if __name__=='__main__':
     Uinf = 10 # unperturbed wind speed in m/s
     TSR = 10 # tip speed ratio
     Radius = 50
     N_blade_sec = 30
     NBlades = 3
-    
+
     TipLocation_R =  1
     RootLocation_R =  0.2
-    pitch = -1.208
-    
+    pitch = -2
+
     airfoil = 'DU_polar.txt'
-    
-    B = steady_BEM(airfoil, TipLocation_R, RootLocation_R, NBlades, Radius, Uinf, TSR, N_blade_sec)
-    CT,CP, results = B.get_solution(pitch)
+    data1=pd.read_csv(airfoil, header=0,
+                        names = ["alfa", "cl", "cd", "cm"],  sep='\s+')
+    polar_alpha = data1['alfa'][:]
+    polar_cl = data1['cl'][:]
+    polar_cd = data1['cd'][:]
+
+    B = steady_BEM(airfoil, TipLocation_R, RootLocation_R, NBlades, Radius, Uinf, TSR, 
+                   N_blade_sec, polar_alpha, polar_cl, polar_cd)
+    CT,CP, results = B.get_solution(pitch, Uinf)
     print('CT: {}'.format(CT))
     print('CP: {}'.format(CP))
-    
-    
-    
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-            
-        
-            
-        
-        
-        
+
+
+
+
         
