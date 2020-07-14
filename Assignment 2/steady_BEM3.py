@@ -45,7 +45,7 @@ def PrandtlTipRootCorrection(r_R, rootradius_R, tipradius_R, TSR, NBlades, axial
     Froot[np.isnan(Froot)] = 0
     return Froot*Ftip, Ftip, Froot
 
-def loadBladeElement(vnorm, vtan, r_R, chord, twist, polar_alpha, polar_cl, polar_cd):
+def loadBladeElement_steady(vnorm, vtan, r_R, chord, twist, polar_alpha, polar_cl, polar_cd):
     """
     calculates the load in the blade element
     """
@@ -61,7 +61,7 @@ def loadBladeElement(vnorm, vtan, r_R, chord, twist, polar_alpha, polar_cl, pola
     gamma = 0.5*np.sqrt(vmag2)*cl*chord
     return fnorm , ftan, gamma, alpha
 
-def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius, NBlades, chord, twist, polar_alpha, polar_cl, polar_cd, weight=0.05 ):
+def solveStreamtube_steady(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius, NBlades, chord, twist, polar_alpha, polar_cl, polar_cd, weight=0.05 ):
     """
     solve balance of momentum between blade element load and loading in the streamtube
     input variables:
@@ -88,7 +88,7 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
         Urotor = Uinf*(1-a) # axial velocity at rotor
         Utan = (1+aline)*Omega*r_R*Radius # tangential velocity at rotor
         # calculate loads in blade segment in 2D (N/m)
-        fnorm, ftan, gamma, alpha = loadBladeElement(Urotor, Utan, r_R,chord, twist, polar_alpha, polar_cl, polar_cd)
+        fnorm, ftan, gamma, alpha = loadBladeElement_steady(Urotor, Utan, r_R,chord, twist, polar_alpha, polar_cl, polar_cd)
         load3Daxial =fnorm*Radius*(r2_R-r1_R)*NBlades # 3D force in axial direction
         # load3Dtan =loads[1]*Radius*(r2_R-r1_R)*NBlades # 3D force in azimuthal/tangential direction (not used here)
       
@@ -177,7 +177,7 @@ class steady_BEM:
         
         #solve each Streamtube
         for i in range(self.N_blade_sec):
-            results[i,:] = solveStreamtube(self.Uinf, self.r_R_dist[i], self.r_R_dist[i+1], 
+            results[i,:] = solveStreamtube_steady(self.Uinf, self.r_R_dist[i], self.r_R_dist[i+1], 
                    self.RootLocation_R, self.TipLocation_R , self.Omega, self.Radius, self.NBlades, 
                    self.chord_cent[i], self.twist_cent[i], self.polar_alpha, self.polar_cl, self.polar_cd, weight = weight)
         #calculate the CT and CP
